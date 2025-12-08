@@ -74,12 +74,13 @@ exports.generateReport = async (req, res) => {
           notes: a.notes
         }))
       });
-    });
-    console.log("Student report object prepared:", {
+      console.log("Student report object prepared:", {
         name: s.name,
         overallAverage: avg,
         totalAssessments: filteredAssessments.length
       });
+    });
+    
       
 
     // ------------------------------

@@ -93,4 +93,33 @@ const loginUser = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser };
+// =========================
+//   GET LOGGED-IN USER
+// =========================
+const getLoggedInUser = async (req, res) => {
+  try {
+    // req.user is filled by your JWT middleware
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const user = await User.findById(userId).select("-password");
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      user,
+    });
+
+  } catch (err) {
+    console.error("getLoggedInUser error:", err);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+
+module.exports = { registerUser, loginUser, getLoggedInUser };
