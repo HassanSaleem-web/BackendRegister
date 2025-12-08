@@ -1,6 +1,10 @@
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
+// =========================
+//   REGISTER USER
+// =========================
 const registerUser = async (req, res) => {
   const { name, company, email, password } = req.body;
 
@@ -13,36 +17,79 @@ const registerUser = async (req, res) => {
     if (existingUser) return res.status(409).json({ message: 'User already exists.' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({ name, company, email, password: hashedPassword });
+
+    const user = new User({
+      name,
+      company,
+      email,
+      password: hashedPassword,
+    });
 
     await user.save();
-    res.status(201).json({ message: 'User registered successfully!' });
+
+    // Create JWT
+    const token = jwt.sign(
+      { id: user._id, name: user.name, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    return res.status(201).json({
+      message: 'User registered successfully!',
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        company: user.company,
+      },
+      token,
+    });
+
   } catch (err) {
     console.error('Registration error:', err);
-    res.status(500).json({ message: 'Server error during registration.' });
+    return res.status(500).json({ message: 'Server error during registration.' });
   }
 };
 
+// =========================
+//   LOGIN USER
+// =========================
 const loginUser = async (req, res) => {
   const { email, password } = req.body;
 
+  if (!email || !password)
+    return res.status(400).json({ message: "Email and password required." });
+
   try {
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: "User not found" });
+    if (!user)
+      return res.status(400).json({ message: "User not found" });
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(401).json({ message: "Invalid credentials" });
+    if (!isMatch)
+      return res.status(401).json({ message: "Invalid credentials" });
 
-    res.status(200).json({
+    // Create JWT
+    const token = jwt.sign(
+      { id: user._id, name: user.name, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    return res.status(200).json({
       message: "Login successful",
       user: {
+        id: user._id,
         name: user.name,
         email: user.email,
+        company: user.company
       },
+      token,
     });
+
   } catch (error) {
     console.error("Login error:", error);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
