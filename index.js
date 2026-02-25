@@ -28,6 +28,7 @@ app.use(cors({
     'http://127.0.0.1:3000',
     'http://localhost:5000',
     'http://127.0.0.1:5500', // Live Server
+    'https://smartassesgrader-wz54.onrender.com', // Render Deployment
     'null'
   ],
   credentials: true
