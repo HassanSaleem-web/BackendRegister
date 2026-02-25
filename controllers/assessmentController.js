@@ -158,7 +158,10 @@ exports.createAssessment = async (req, res) => {
         maxScore,
         percentage,
         date,
-        notes
+        notes,
+        metrics: Array.isArray(s.metrics) ? s.metrics : [],
+        strengths: Array.isArray(s.strengths) ? s.strengths : [],
+        weaknesses: Array.isArray(s.weaknesses) ? s.weaknesses : []
       };
 
       student.assessments.push(newAssessment);
@@ -181,18 +184,18 @@ exports.createAssessment = async (req, res) => {
       }
 
       // 4. AI Insights Generation
-     // 4. AI Insights Generation (STRUCTURED)
-const ai = await generateAIInsights(student, newAssessment, student.assessments);
+      // 4. AI Insights Generation (STRUCTURED)
+      const ai = await generateAIInsights(student, newAssessment, student.assessments);
 
-// Save structured fields
-student.aiSummary = ai.summary;
-student.aiStrengths = ai.strengths;
-student.aiWeaknesses = ai.weaknesses;
-student.aiLearningPlan = ai.learningPlan;
-student.aiLastUpdated = new Date();
+      // Save structured fields
+      student.aiSummary = ai.summary;
+      student.aiStrengths = ai.strengths;
+      student.aiWeaknesses = ai.weaknesses;
+      student.aiLearningPlan = ai.learningPlan;
+      student.aiLastUpdated = new Date();
 
-// Save latest assessment feedback
-newAssessment.aiFeedback = ai.assessmentFeedback;
+      // Save latest assessment feedback
+      newAssessment.aiFeedback = ai.assessmentFeedback;
 
       await student.save();
     }

@@ -14,18 +14,22 @@ const AssessmentSchema = new mongoose.Schema({
   percentage: Number,          // auto-calc maybe
   date: { type: Date, default: Date.now },
   notes: String,
-  aiFeedback: String           // optional future feature
+  aiFeedback: String,          // optional future feature
+  metrics: [{ name: String, score: Number }],
+  strengths: [String],
+  weaknesses: [String]
 });
 
 const StudentSchema = new mongoose.Schema({
   teacherId: { type: mongoose.Schema.Types.ObjectId, ref: "Teacher", required: true },
-  
+
   // Basic Info
   name: { type: String, required: true },
   ell: { type: Boolean, default: false },
   gender: String,
   dob: Date,
-  
+  attendance: { type: Number, default: 100 },
+
   // Classroom(s)
   classroomIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Classroom" }],
 

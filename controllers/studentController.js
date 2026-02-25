@@ -1,6 +1,17 @@
 const Student = require("../models/Student");
 const Classroom = require("../models/Classroom");
 
+// Helper to update cached averageScore whenever assessments change
+function recalculateStudentStats(student) {
+  if (!student.assessments || student.assessments.length === 0) {
+    student.averageScore = 0;
+  } else {
+    // Treat string percentages gracefully, calculate sum
+    const sum = student.assessments.reduce((acc, a) => acc + (parseFloat(a.percentage) || 0), 0);
+    student.averageScore = sum / student.assessments.length;
+  }
+}
+
 // ------------------------------
 // CREATE STUDENT
 // ------------------------------
@@ -75,15 +86,9 @@ exports.getAllStudents = async (req, res) => {
     const students = await Student.find({ teacherId })
       .populate("classroomIds", "name");
 
-    const formatted = students.map(s => ({
-      _id: s._id,
-      name: s.name,
-      classroomName: s.classroomIds?.[0]?.name || "Unassigned",
-      ell: s.ell,
-      avg: s.averageScore || null
-    }));
+    console.log(`[getAllStudents] Found ${students.length} students for Teacher ${teacherId}`);
 
-    return res.json({ success: true, students: formatted });
+    return res.json({ success: true, students });
 
   } catch (err) {
     console.error("Error fetching all students:", err);
@@ -151,6 +156,78 @@ exports.deleteStudent = async (req, res) => {
 };
 
 // ------------------------------
+// ADD STUDENT TO CLASSES
+// ------------------------------
+exports.addStudentToClasses = async (req, res) => {
+  try {
+    const teacherId = req.user.id;
+    const { classroomIds } = req.body; // array of classroom IDs
+
+    if (!classroomIds || !Array.isArray(classroomIds)) {
+      return res.status(400).json({ success: false, message: "Classroom IDs must be an array" });
+    }
+
+    const student = await Student.findOne({ _id: req.params.id, teacherId });
+    if (!student) return res.status(404).json({ success: false, message: "Student not found" });
+
+    // Validate if classrooms belong to teacher
+    const validClassrooms = await Classroom.find({ _id: { $in: classroomIds }, teacher: teacherId });
+    const validIds = validClassrooms.map(c => c._id.toString());
+
+    // Add to Student
+    const oldClassrooms = student.classroomIds.map(id => id.toString());
+    const added = validIds.filter(id => !oldClassrooms.includes(id));
+
+    if (added.length > 0) {
+      student.classroomIds.push(...added);
+      await student.save();
+      // Add student to those Classrooms
+      await Classroom.updateMany({ _id: { $in: added } }, { $addToSet: { students: student._id } });
+    }
+
+    res.json({ success: true, message: "Added to classes successfully", student });
+  } catch (err) {
+    console.error("Error adding student to classes:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// ------------------------------
+// MOVE STUDENT CLASS
+// ------------------------------
+exports.moveStudentClass = async (req, res) => {
+  try {
+    const teacherId = req.user.id;
+    const { fromClassroomId, toClassroomId } = req.body;
+
+    if (!fromClassroomId || !toClassroomId) {
+      return res.status(400).json({ success: false, message: "Missing from/to classroom IDs" });
+    }
+
+    const student = await Student.findOne({ _id: req.params.id, teacherId });
+    if (!student) return res.status(404).json({ success: false, message: "Student not found" });
+
+    // Remove from old class
+    student.classroomIds = student.classroomIds.filter(id => id.toString() !== fromClassroomId);
+
+    // Add to new class if not already there
+    if (!student.classroomIds.some(id => id.toString() === toClassroomId)) {
+      student.classroomIds.push(toClassroomId);
+    }
+    await student.save();
+
+    // Update Classroom models
+    await Classroom.findByIdAndUpdate(fromClassroomId, { $pull: { students: student._id } });
+    await Classroom.findByIdAndUpdate(toClassroomId, { $addToSet: { students: student._id } });
+
+    res.json({ success: true, message: "Moved class successfully", student });
+  } catch (err) {
+    console.error("Error moving student class:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// ------------------------------
 // ADD ASSESSMENT
 // ------------------------------
 exports.addAssessment = async (req, res) => {
@@ -176,40 +253,12 @@ exports.addAssessment = async (req, res) => {
       classroomId
     });
 
+    recalculateStudentStats(student);
     await student.save();
 
     res.json({ success: true, student });
   } catch (err) {
     console.error("Error adding assessment:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-// ------------------------------
-// DELETE ASSESSMENT
-// ------------------------------
-exports.deleteAssessment = async (req, res) => {
-  try {
-    const teacherId = req.user.id;
-
-    const student = await Student.findOne({
-      _id: req.params.id,
-      teacherId
-    });
-
-    if (!student) {
-      return res.status(404).json({ success: false, message: "Student not found" });
-    }
-
-    student.assessments = student.assessments.filter(
-      (a) => a._id.toString() !== req.params.assessmentId
-    );
-
-    await student.save();
-
-    res.json({ success: true, student });
-  } catch (err) {
-    console.error("Error deleting assessment:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -311,12 +360,13 @@ exports.updateStudent = async (req, res) => {
 // ===============================
 exports.updateAssessment = async (req, res) => {
   try {
+    const teacherId = req.user.id;
     const { studentId, assessmentId } = req.params;
     const { type, score, maxScore, date, notes } = req.body;
 
-    const student = await Student.findById(studentId);
+    const student = await Student.findOne({ _id: studentId, teacherId });
     if (!student) {
-      return res.status(404).json({ success: false, message: "Student not found" });
+      return res.status(404).json({ success: false, message: "Student not found or unauthorized" });
     }
 
     const assessment = student.assessments.id(assessmentId);
@@ -336,6 +386,7 @@ exports.updateAssessment = async (req, res) => {
       assessment.percentage = (assessment.score / assessment.maxScore) * 100;
     }
 
+    recalculateStudentStats(student);
     await student.save();
 
     return res.json({
@@ -349,16 +400,18 @@ exports.updateAssessment = async (req, res) => {
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
 // ===============================
 // DELETE ASSESSMENT
 // ===============================
 exports.deleteAssessment = async (req, res) => {
   try {
+    const teacherId = req.user.id;
     const { studentId, assessmentId } = req.params;
 
-    const student = await Student.findById(studentId);
+    const student = await Student.findOne({ _id: studentId, teacherId });
     if (!student) {
-      return res.status(404).json({ success: false, message: "Student not found" });
+      return res.status(404).json({ success: false, message: "Student not found or unauthorized" });
     }
 
     const assessment = student.assessments.id(assessmentId);
@@ -367,6 +420,8 @@ exports.deleteAssessment = async (req, res) => {
     }
 
     assessment.deleteOne(); // or assessment.remove();
+
+    recalculateStudentStats(student);
     await student.save();
 
     return res.json({

@@ -30,9 +30,9 @@ exports.generateReport = async (req, res) => {
     const reportData = [];
 
     students.forEach(s => {
-        console.log("\n--- PROCESSING STUDENT:", s.name, "ID:", s._id, "---");
-        console.log("Raw assessments:", s.assessments);
-        
+      console.log("\n--- PROCESSING STUDENT:", s.name, "ID:", s._id, "---");
+      console.log("Raw assessments:", s.assessments);
+
       const filteredAssessments = (s.assessments || []).filter(a => {
         const d = new Date(a.date);
         return d >= start && d <= end;
@@ -80,8 +80,8 @@ exports.generateReport = async (req, res) => {
         totalAssessments: filteredAssessments.length
       });
     });
-    
-      
+
+
 
     // ------------------------------
     // GROUP LEVEL ANALYTICS
@@ -97,7 +97,7 @@ exports.generateReport = async (req, res) => {
       0
     );
     console.log("\nGroup Average:", groupAvg);
-console.log("Total assessments across group:", totalAssessmentsAcrossGroup);
+    console.log("Total assessments across group:", totalAssessmentsAcrossGroup);
 
 
     // Prepare data for AI prompt
@@ -197,19 +197,87 @@ Now produce a complete, polished, administrator-level report.
     const aiText = aiResponse.data.choices[0].message.content;
 
     return res.json({
-        success: true,
-        report: reportData,   // <-- renamed so frontend reads it correctly
-        groupLevelAnalysis: {
-          groupAverage: groupAvg,
-          totalAssessments: totalAssessmentsAcrossGroup
-        },
-        aiNarrativeReport: aiText
-      });
-      
+      success: true,
+      report: reportData,   // <-- renamed so frontend reads it correctly
+      groupLevelAnalysis: {
+        groupAverage: groupAvg,
+        totalAssessments: totalAssessmentsAcrossGroup
+      },
+      aiNarrativeReport: aiText
+    });
+
   } catch (err) {
     console.error("REPORT ERROR:", err);
     return res.status(500).json({ success: false, message: "Report generation failed" });
   }
-  
+};
 
+// ------------------------------
+// DYNAMIC DASHBOARD INSIGHTS
+// ------------------------------
+exports.generateDynamicInsights = async (req, res) => {
+  try {
+    const { students } = req.body;
+
+    if (!students || students.length === 0) {
+      return res.json({ success: true, insights: [] });
+    }
+
+    // Limit to 15 students to avoid massive context
+    const sampled = students.slice(0, 15).map(s => ({
+      name: s.name,
+      average: s.averageScore || s.avg || 0,
+      assessmentsCount: s.assessments ? s.assessments.length : 0
+    }));
+
+    const plainTextFormatted = JSON.stringify(sampled, null, 2);
+
+    const prompt = `
+You are an AI teaching assistant. Analyze this brief roster data and provide exactly 3 actionable, short insights or recommendations for the teacher. 
+
+Roster Data:
+${plainTextFormatted}
+
+Format your output strictly as a JSON array of 3 objects identical to this structure:
+[
+  { "type": "Intervention", "icon": "ph-warning-circle", "color": "text-indigo-600", "label": "Support Needed", "text": "<b>Student Name</b>: needs help..." },
+  { "type": "Praise", "icon": "ph-thumbs-up", "color": "text-emerald-600", "label": "Acknowledge", "text": "<b>Student Name</b>: doing great..." },
+  { "type": "Curriculum", "icon": "ph-books", "color": "text-slate-600", "label": "Strategy", "text": "General strategy..." }
+]
+Do not return markdown formatting blocks or any text outside of the JSON array.
+`;
+
+    const aiResponse = await axios.post(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
+        model: "x-ai/grok-4-fast",
+        messages: [
+          { role: "system", content: "You are a master educator analytical engine." },
+          { role: "user", content: prompt }
+        ]
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "HTTP-Referer": "https://smartassess.app",
+          "X-Title": "SmartAssess Dynamic Insights"
+        }
+      }
+    );
+
+    const rawText = aiResponse.data.choices[0].message.content.trim();
+    let insights = [];
+    try {
+      // Strip markdown code blocks if the LLM adds them
+      const cleanText = rawText.replace(/```json/gi, '').replace(/```/gi, '').trim();
+      insights = JSON.parse(cleanText);
+    } catch (e) {
+      console.error("Failed to parse dynamic insights JSON:", e, rawText);
+    }
+
+    return res.json({ success: true, insights });
+  } catch (err) {
+    console.error("DYNAMIC INSIGHTS ERROR:", err);
+    return res.status(500).json({ success: false, message: "Insights generation failed" });
+  }
 };

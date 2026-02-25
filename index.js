@@ -16,7 +16,22 @@ const reportRoutes = require('./routes/reportRoutes');
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-app.use(cors());
+// Request Logger
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
+
+app.use(cors({
+  origin: [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:5000',
+    'http://127.0.0.1:5500', // Live Server
+    'null'
+  ],
+  credentials: true
+}));
 app.use(bodyParser.json());
 
 app.use('/api', authRoutes);

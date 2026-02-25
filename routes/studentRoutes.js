@@ -12,9 +12,9 @@ const {
   addIntervention,
   updateAISummary,
   getAllStudents,
-  updateAssessment
-  
-  
+  updateAssessment,
+  addStudentToClasses,
+  moveStudentClass
 } = require("../controllers/studentController");
 
 // All routes require authentication
@@ -22,7 +22,7 @@ router.use(authMiddleware);
 
 // Create a student
 router.post("/create", createStudent);
-router.get("/all",  getAllStudents);
+router.get("/all", getAllStudents);
 // Get all students in a classroom
 router.get("/classroom/:classroomId", getStudentsByClassroom);
 
@@ -30,7 +30,13 @@ router.get("/classroom/:classroomId", getStudentsByClassroom);
 router.get("/:id", getStudentById);
 
 // Update student info (name, ELL, flags)
-router.put("/:id", updateStudent);
+// router.put("/:id", updateStudent);
+
+// Add student to other classes
+router.put("/:id/add-classes", addStudentToClasses);
+
+// Move student to another class
+router.put("/:id/move-class", moveStudentClass);
 
 // Delete student
 router.delete("/:id", deleteStudent);
